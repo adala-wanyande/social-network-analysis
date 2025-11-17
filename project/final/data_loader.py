@@ -10,36 +10,28 @@ DATA_DIR = Path(__file__).parent / "networks"
 # This makes it easy to add new datasets in the future.
 DATASET_CONFIG = {
     'livejournal': {
-        'filename': 'soc-LiveJournal1.txt',
+        'filename': 'Wiki-vote.txt',
+        'pretty_name': 'Wiki-Vote',
         'is_weighted': False,
         'comment_char': '#'
     },
     'orkut': {
-        'filename': 'com-orkut.ungraph.txt',
+        'filename': 'facebook_combined.txt',
+        'pretty_name': 'Facebook',
         'is_weighted': False,
         'comment_char': '#'
     },
-    'roadnet-ca': {
-        'filename': 'roadNet-CA.txt',
-        'is_weighted': True,
-        'comment_char': '#'
-    },
     'google': {
-        'filename': 'web-Google.txt',
+        'filename': 'email-Eu-core-department-labels.txt',
+        'pretty_name': 'Email-EU-Core',
         'is_weighted': False,
         'comment_char': '#'
     },
     'dblp': {
-        'filename': 'com-dblp.ungraph.txt',
+        'filename': 'CA-GrQc.txt',
+        'pretty_name': 'CA-GrQc',
         'is_weighted': False,
         'comment_char': '#'
-    },
-    'stackoverflow': {
-        'filename': 'sx-stackoverflow.txt',
-        'is_weighted': True,
-        'comment_char': '%',
-        # This dataset requires a custom loading function
-        'loader_func': '_load_stackoverflow'
     }
 }
 
@@ -109,7 +101,7 @@ def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
     config = DATASET_CONFIG[dataset_name]
     filepath = DATA_DIR / config['filename']
     
-    print(f"\n--- Loading and Pre-processing Dataset: {dataset_name.upper()} ---")
+    print(f"\n--- Loading and Pre-processing Dataset: {config['pretty_name'].upper()} ---")
 
     if not filepath.exists():
         raise FileNotFoundError(
@@ -159,7 +151,7 @@ def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
         print(f"     Nodes: {G.number_of_nodes():,} -> {G_lcc.number_of_nodes():,}")
         print(f"     Edges: {G.number_of_edges():,} -> {G_lcc.number_of_edges():,}")
 
-    print(f"--- Finished processing {dataset_name.upper()}. Ready for analysis. ---")
+    print(f"--- Finished processing {config['pretty_name'].upper()}. Ready for analysis. ---")
     return G_lcc
 
 
