@@ -22,7 +22,7 @@ DATASET_CONFIG = {
         'comment_char': '#'
     },
     'Email-EU-Core': {
-        'filename': 'email-Eu-core-department-labels.txt',
+        'filename': 'email-Eu-core.txt',
         'pretty_name': 'Email-EU-Core',
         'is_weighted': False,
         'comment_char': '#'
