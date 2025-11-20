@@ -11,13 +11,13 @@ import centrality_algorithms
 # Define the datasets to run experiments on and their properties
 # The key is the short name used in data_loader
 DATASETS_CONFIG = {
-    'livejournal':   {'is_weighted': False, 'run_textbook': False}, # Textbook is too slow
-    'orkut':         {'is_weighted': False, 'run_textbook': False}, # Textbook is too slow
-    'roadnet-ca':    {'is_weighted': True,  'run_textbook': True},
-    'google':        {'is_weighted': False, 'run_textbook': True},
-    'dblp':          {'is_weighted': False, 'run_textbook': True},
-    'stackoverflow': {'is_weighted': True,  'run_textbook': False}  # Textbook is too slow
+    'Wiki-Vote':     {'is_weighted': False, 'run_textbook': False},
+    'Facebook':      {'is_weighted': False, 'run_textbook': False},
+    'Email-EU-Core': {'is_weighted': False, 'run_textbook': True},
+    'CA-GrQc':       {'is_weighted': False, 'run_textbook': True}
 }
+
+
 
 # Define the k-values to test for top-k
 K_VALUES = [1, 10, 100]

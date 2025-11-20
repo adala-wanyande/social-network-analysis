@@ -9,31 +9,32 @@ DATA_DIR = Path(__file__).parent / "networks"
 # Configuration dictionary to map dataset names to their file info and properties
 # This makes it easy to add new datasets in the future.
 DATASET_CONFIG = {
-    'livejournal': {
+    'Wiki-Vote': {
         'filename': 'Wiki-vote.txt',
         'pretty_name': 'Wiki-Vote',
         'is_weighted': False,
         'comment_char': '#'
     },
-    'orkut': {
+    'Facebook': {
         'filename': 'facebook_combined.txt',
         'pretty_name': 'Facebook',
         'is_weighted': False,
         'comment_char': '#'
     },
-    'google': {
+    'Email-EU-Core': {
         'filename': 'email-Eu-core-department-labels.txt',
         'pretty_name': 'Email-EU-Core',
         'is_weighted': False,
         'comment_char': '#'
     },
-    'dblp': {
+    'CA-GrQc': {
         'filename': 'CA-GrQc.txt',
         'pretty_name': 'CA-GrQc',
         'is_weighted': False,
         'comment_char': '#'
     }
 }
+
 
 def _load_stackoverflow() -> nx.Graph:
     """
@@ -83,24 +84,24 @@ def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
     and returns the final graph object.
 
     Pre-processing steps:
-    1. Loads the graph from the corresponding file in the './networks' folder.
-    2. Converts the graph to be undirected.
-    3. Extracts the Largest Connected Component (LCC).
+      1. Loads the graph from the corresponding file in the './networks' folder.
+      2. Converts the graph to undirected if needed.
+      3. Extracts the Largest Connected Component (LCC).
 
     Args:
-        dataset_name (str): The short name of the dataset (e.g., 'livejournal').
+      dataset_name (str): The short name of the dataset (e.g., 'livejournal').
 
     Returns:
-        nx.Graph: The pre-processed graph ready for experiments.
+      nx.Graph: The pre-processed graph ready for experiments.
     """
-    dataset_name = dataset_name.lower()
+    # dataset_name = dataset_name.lower()
     if dataset_name not in DATASET_CONFIG:
         raise ValueError(f"Unknown dataset: '{dataset_name}'. "
                          f"Available datasets are: {list(DATASET_CONFIG.keys())}")
 
     config = DATASET_CONFIG[dataset_name]
     filepath = DATA_DIR / config['filename']
-    
+
     print(f"\n--- Loading and Pre-processing Dataset: {config['pretty_name'].upper()} ---")
 
     if not filepath.exists():
@@ -110,26 +111,21 @@ def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
         )
 
     # --- Step 1: Load Graph ---
-    G = None
-    if 'loader_func' in config and config['loader_func'] == '_load_stackoverflow':
-        G = _load_stackoverflow()
+    print(f"  -> Reading graph from {filepath}...")
+    if config['is_weighted']:
+        # For weighted graphs
+        G = nx.read_weighted_edgelist(
+            filepath,
+            comments=config['comment_char'],
+            nodetype=int
+        )
     else:
-        print(f"  -> Reading graph from {filepath}...")
-        if config['is_weighted']:
-            # For weighted graphs like roadNet-CA
-            G = nx.read_weighted_edgelist(
-                filepath, 
-                comments=config['comment_char'], 
-                nodetype=int
-            )
-        else:
-            # For unweighted graphs
-            G = nx.read_edgelist(
-                filepath, 
-                comments=config['comment_char'], 
-                nodetype=int
-            )
-    
+        G = nx.read_edgelist(
+            filepath,
+            comments=config['comment_char'],
+            nodetype=int
+        )
+
     print(f"  -> Initial graph loaded: {G.number_of_nodes():,} nodes, {G.number_of_edges():,} edges.")
 
     # --- Step 2: Ensure Undirected ---
@@ -143,10 +139,8 @@ def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
         G_lcc = G
     else:
         print("  -> Graph is not connected. Extracting the Largest Connected Component (LCC)...")
-        # Get the largest component
         lcc_nodes = max(nx.connected_components(G), key=len)
         G_lcc = G.subgraph(lcc_nodes).copy()
-        
         print(f"  -> LCC extracted. Graph size reduced:")
         print(f"     Nodes: {G.number_of_nodes():,} -> {G_lcc.number_of_nodes():,}")
         print(f"     Edges: {G.number_of_edges():,} -> {G_lcc.number_of_edges():,}")
@@ -157,19 +151,14 @@ def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
 
 # This block allows you to run the script directly for testing purposes
 if __name__ == '__main__':
-    # List of datasets to test loading
-    datasets_to_test = [
-        'livejournal',
-        'roadnet-ca',
-        'stackoverflow',
-        'dblp'
-    ]
+    # Build the test list from DATASET_CONFIG to ensure consistency
+    datasets_to_test = list(DATASET_CONFIG.keys())
 
     for name in datasets_to_test:
+        pretty = DATASET_CONFIG[name].get('pretty_name', name)
         try:
             graph = load_and_preprocess_graph(name)
-            print(f"Successfully loaded and processed '{name}'.")
-            # You can add more checks here, like printing the number of nodes/edges
+            print(f"Successfully loaded and processed '{pretty}'.")
             print(f"Final graph info: Nodes={graph.number_of_nodes()}, Edges={graph.number_of_edges()}\n")
         except (ValueError, FileNotFoundError) as e:
-            print(f"Error loading '{name}': {e}\n")
+            print(f"Error loading '{pretty}': {e}\n")
