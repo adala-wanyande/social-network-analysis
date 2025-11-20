@@ -12,7 +12,6 @@ def textbook_unweighted(G: nx.Graph, k: int) -> dict:
     n = len(nodes)
     centrality_scores = []
     for node in nodes:
-        # We assume the graph is the LCC, so all nodes are reachable
         distances = nx.single_source_shortest_path_length(G, node)
         farness_sum = sum(distances.values())
         closeness = (n - 1) / farness_sum if farness_sum > 0 else 0.0
@@ -47,15 +46,14 @@ def _update_all_bounds_lb(G: nx.Graph, s: int, distances: dict) -> dict:
     """
     n = G.number_of_nodes()
     max_d = 0
-    # Group nodes by their distance from s
     levels = {}
     for node, dist in distances.items():
-        dist = int(dist) # Distances can be floats in weighted graphs
-        if dist not in levels:
-            levels[dist] = []
-        levels[dist].append(node)
-        if dist > max_d:
-            max_d = dist
+        dist_int = int(dist)
+        if dist_int not in levels:
+            levels[dist_int] = []
+        levels[dist_int].append(node)
+        if dist_int > max_d:
+            max_d = dist_int
 
     gamma = [len(levels.get(i, [])) for i in range(max_d + 1)]
     
@@ -75,8 +73,6 @@ def _update_all_bounds_lb(G: nx.Graph, s: int, distances: dict) -> dict:
     new_farness_sum_bounds = {}
     for i in range(max_d + 1):
         for v in levels.get(i, []):
-            # The paper's simpler bound for undirected graphs (Lemma 7.2 + deg)
-            # This is a lower bound on the sum of distances, S(v)
             new_farness_sum_bounds[v] = L_level[i] - G.degree(v)
             
     return new_farness_sum_bounds
@@ -93,11 +89,12 @@ def _fast_top_k_runner(G: nx.Graph, k: int, is_weighted: bool, log_convergence_d
     nodes = list(G.nodes())
     n = len(nodes)
     
-    # Paper uses 'farness', f(v) = S(v) * (n-1) / (r(v)-1)^2. Since r(v)=n for LCC,
-    # f(v) is proportional to S(v). We can work directly with S(v), the sum of distances.
-    lower_bounds_S = {node: 0.0 for node in nodes} # Lower bound on S(v)
-    top_k_list = [] # Stores (exact_S, node)
+    lower_bounds_S = {node: 0.0 for node in nodes}
+    top_k_list = []
     sssp_count = 0
+    
+    # --- THIS LINE WAS MISSING. IT IS NOW FIXED. ---
+    convergence_log = []
     
     pq = [(lower_bounds_S[node], node) for node in nodes]
     heapq.heapify(pq)
@@ -105,18 +102,18 @@ def _fast_top_k_runner(G: nx.Graph, k: int, is_weighted: bool, log_convergence_d
     while pq:
         current_S_bound, v = heapq.heappop(pq)
 
-        # Stale entry check: if we found a better bound for `v` since this
-        # entry was pushed, ignore this old entry.
         if current_S_bound < lower_bounds_S[v]:
             continue
+            
+        if log_convergence_data:
+            kth_S_exact = top_k_list[k-1][0] if len(top_k_list) >= k else float('inf')
+            convergence_log.append({'iteration': sssp_count + 1, 'kth_farness': kth_S_exact, 'lower_bound': current_S_bound})
 
-        # --- Stopping Condition ---
         if len(top_k_list) >= k:
-            kth_S_exact = top_k_list[k-1][0]
-            if current_S_bound > kth_S_exact:
-                break # Pruning happens here!
+            kth_S_exact_check = top_k_list[k-1][0]
+            if current_S_bound > kth_S_exact_check:
+                break
 
-        # --- SSSP Computation ---
         sssp_count += 1
         if is_weighted:
             distances = nx.single_source_dijkstra_path_length(G, v)
@@ -125,14 +122,12 @@ def _fast_top_k_runner(G: nx.Graph, k: int, is_weighted: bool, log_convergence_d
         
         exact_S = sum(distances.values())
 
-        # Update the exact score of the processed node `v`
         lower_bounds_S[v] = exact_S
         heapq.heappush(top_k_list, (exact_S, v))
         top_k_list.sort(key=lambda x: x[0])
         if len(top_k_list) > k:
             top_k_list.pop()
         
-        # --- CRITICAL STEP: Update bounds for ALL other nodes ---
         new_S_bounds = _update_all_bounds_lb(G, v, distances)
         
         for node, s_lb in new_S_bounds.items():
@@ -143,7 +138,6 @@ def _fast_top_k_runner(G: nx.Graph, k: int, is_weighted: bool, log_convergence_d
     runtime = time.time() - start_time
     print(f"     Done in {runtime:.4f} seconds. ({sssp_count}/{n} SSSPs performed)")
     
-    # Convert final farness sums (S) to closeness scores
     final_top_k = []
     for s_val, node in top_k_list:
         closeness = (n - 1) / s_val if s_val > 0 else 0.0
@@ -153,11 +147,13 @@ def _fast_top_k_runner(G: nx.Graph, k: int, is_weighted: bool, log_convergence_d
     pruning_power = 1.0 - (sssp_count / n)
     
     result_dict = {'top_k': final_top_k, 'runtime': runtime, 'sssp_count': sssp_count, 'pruning_power': pruning_power}
-    # Note: Convergence logging would need to be added back if desired
+    if log_convergence_data:
+        result_dict['convergence_log'] = convergence_log
+        
     return result_dict
 
-def topk_closeness_unweighted(G: nx.Graph, k: int, **kwargs) -> dict:
-    return _fast_top_k_runner(G, k, is_weighted=False, **kwargs)
+def topk_closeness_unweighted(G: nx.Graph, k: int, log_convergence_data: bool = False, **kwargs) -> dict:
+    return _fast_top_k_runner(G, k, is_weighted=False, log_convergence_data=log_convergence_data)
 
-def topk_closeness_weighted(G: nx.Graph, k: int, **kwargs) -> dict:
-    return _fast_top_k_runner(G, k, is_weighted=True, **kwargs)
+def topk_closeness_weighted(G: nx.Graph, k: int, log_convergence_data: bool = False, **kwargs) -> dict:
+    return _fast_top_k_runner(G, k, is_weighted=True, log_convergence_data=log_convergence_data)

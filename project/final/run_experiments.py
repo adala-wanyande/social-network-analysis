@@ -1,21 +1,30 @@
 import pandas as pd
 from datetime import datetime
-
-# Import our custom modules
 import data_loader
 import centrality_algorithms
 
-# --- Finalized Configuration ---
+# --- DEFINITIVE FINAL 7-DATASET CONFIGURATION ---
 DATASETS_CONFIG = {
     'wiki-vote':        {'is_weighted': False, 'run_textbook': True},
     'facebook':         {'is_weighted': False, 'run_textbook': True},
     'email-eu':         {'is_weighted': False, 'run_textbook': True},
     'ca-grqc':          {'is_weighted': False, 'run_textbook': True},
     'lesmis':           {'is_weighted': True,  'run_textbook': True},
+    'norwegian-boards': {'is_weighted': True,  'run_textbook': True},
     'facebook-forum':   {'is_weighted': True,  'run_textbook': True}
 }
+
 K_VALUES = [1, 10, 100]
 CONVERGENCE_LOG_CONFIG = {('wiki-vote', 10), ('facebook-forum', 10)}
+TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+OUTPUT_CSV_FILE = f'experiment_results_{TIMESTAMP}.csv'
+
+# These tuples MUST EXACTLY MATCH the keys above
+CONVERGENCE_LOG_CONFIG = {
+    ('wiki-vote', 10), 
+    ('facebook-forum', 10)
+}
+
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_CSV_FILE = f'experiment_results_{TIMESTAMP}.csv'
 
@@ -38,7 +47,8 @@ def main():
                 algo_func = centrality_algorithms.textbook_weighted if config['is_weighted'] else centrality_algorithms.textbook_unweighted
                 res = algo_func(G, k)
                 all_results.append({
-                    'dataset': name, 'k': k, 'algorithm': 'textbook', 'runtime': res['runtime'],
+                    'dataset': name, 'nodes': n_nodes, 'edges': n_edges, 'k': k, 
+                    'algorithm': 'textbook', 'runtime': res['runtime'],
                     'sssp_count': n_nodes, 'pruning_power': 0.0
                 })
 
@@ -52,8 +62,9 @@ def main():
                 print(f"  -> Saved convergence data to 'convergence_log_{name}_k{k}.csv'")
 
             all_results.append({
-                'dataset': name, 'k': k, 'algorithm': 'fast_topk',
-                'runtime': res['runtime'], 'sssp_count': res['sssp_count'], 'pruning_power': res['pruning_power']
+                'dataset': name, 'nodes': n_nodes, 'edges': n_edges, 'k': k, 
+                'algorithm': 'fast_topk', 'runtime': res['runtime'], 
+                'sssp_count': res['sssp_count'], 'pruning_power': res['pruning_power']
             })
 
     if not all_results:
@@ -65,8 +76,8 @@ def main():
     
     def calculate_improvement(df_group):
         try:
-            textbook_time = df_group[df_group['algorithm'] == 'textbook']['runtime'].iloc[0]
-            fast_time = df_group[df_group['algorithm'] == 'fast_topk']['runtime'].iloc[0]
+            textbook_time = df_group.loc[df_group['algorithm'] == 'textbook', 'runtime'].iloc[0]
+            fast_time = df_group.loc[df_group['algorithm'] == 'fast_topk', 'runtime'].iloc[0]
             df_group['improvement_factor'] = textbook_time / fast_time
         except (IndexError, ZeroDivisionError):
             df_group['improvement_factor'] = None
@@ -80,6 +91,5 @@ def main():
     results_df.to_csv(OUTPUT_CSV_FILE, index=False)
     print(f"\nSuccessfully saved all results to '{OUTPUT_CSV_FILE}'")
 
-# --- CRITICAL BUG FIX ---
 if __name__ == '__main__':
-    main() # Must have parentheses to call the function
+    main()
