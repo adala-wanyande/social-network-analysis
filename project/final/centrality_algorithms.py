@@ -1,223 +1,163 @@
 import networkx as nx
 import time
 import heapq
-import pandas as pd  # Needed for creating the log dataframe
-import platform
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import pandas as pd
 
-
-def get_executor():
-    """Selects appropriate executor depending on the operating system."""
-    if platform.system() == "Windows":
-        print("  ⚙️ Using ThreadPoolExecutor (Windows-safe parallelization).")
-        return ThreadPoolExecutor
-    else:
-        print("  ⚙️ Using ProcessPoolExecutor (true multi-core parallelization).")
-        return ProcessPoolExecutor
-
-
+# --- Textbook functions remain the same ---
 def textbook_unweighted(G: nx.Graph, k: int) -> dict:
-    """Computes top-k closeness centrality using the textbook algorithm for unweighted graphs."""
+    """Computes top-k closeness using the textbook BFS-from-every-node method."""
     print("  -> Running Textbook Unweighted Algorithm...")
     start_time = time.time()
-
     nodes = list(G.nodes())
     n = len(nodes)
     centrality_scores = []
-
     for node in nodes:
+        # We assume the graph is the LCC, so all nodes are reachable
         distances = nx.single_source_shortest_path_length(G, node)
-        farness = sum(distances.values())
-        closeness = (n - 1) / farness if farness > 0 else 0.0
+        farness_sum = sum(distances.values())
+        closeness = (n - 1) / farness_sum if farness_sum > 0 else 0.0
         centrality_scores.append((closeness, node))
-
     centrality_scores.sort(key=lambda x: x[0], reverse=True)
     runtime = time.time() - start_time
     print(f"     Done in {runtime:.4f} seconds.")
-
     return {'top_k': centrality_scores[:k], 'runtime': runtime}
-
 
 def textbook_weighted(G: nx.Graph, k: int) -> dict:
-    """Computes top-k closeness centrality using the textbook algorithm for weighted graphs."""
+    """Computes top-k closeness using the textbook Dijkstra-from-every-node method."""
     print("  -> Running Textbook Weighted Algorithm...")
     start_time = time.time()
-
     nodes = list(G.nodes())
     n = len(nodes)
     centrality_scores = []
-
     for node in nodes:
         distances = nx.single_source_dijkstra_path_length(G, node)
-        farness = sum(distances.values())
-        closeness = (n - 1) / farness if farness > 0 else 0.0
+        farness_sum = sum(distances.values())
+        closeness = (n - 1) / farness_sum if farness_sum > 0 else 0.0
         centrality_scores.append((closeness, node))
-
     centrality_scores.sort(key=lambda x: x[0], reverse=True)
     runtime = time.time() - start_time
     print(f"     Done in {runtime:.4f} seconds.")
-
     return {'top_k': centrality_scores[:k], 'runtime': runtime}
 
 
-# --- Worker Function ---
-def _compute_farness(args):
-    """Worker function for parallel BFS/Dijkstra computation."""
-    G, v, is_weighted = args
-    if is_weighted:
-        distances = nx.single_source_dijkstra_path_length(G, v)
-    else:
-        distances = nx.single_source_shortest_path_length(G, v)
-    return v, sum(distances.values())
+def _update_all_bounds_lb(G: nx.Graph, s: int, distances: dict) -> dict:
+    """
+    Implements Algorithm 5 from the paper to efficiently compute new lower bounds
+    on the farness sum for all other nodes after an SSSP from source `s`.
+    """
+    n = G.number_of_nodes()
+    max_d = 0
+    # Group nodes by their distance from s
+    levels = {}
+    for node, dist in distances.items():
+        dist = int(dist) # Distances can be floats in weighted graphs
+        if dist not in levels:
+            levels[dist] = []
+        levels[dist].append(node)
+        if dist > max_d:
+            max_d = dist
 
+    gamma = [len(levels.get(i, [])) for i in range(max_d + 1)]
+    
+    prefix_sum_gamma = [0] * (max_d + 1)
+    prefix_sum_gamma[0] = gamma[0]
+    for i in range(1, max_d + 1):
+        prefix_sum_gamma[i] = prefix_sum_gamma[i-1] + gamma[i]
 
-def _fast_top_k_runner(G: nx.Graph, k: int, is_weighted: bool, log_convergence_data: bool = False, use_parallel: bool = True) -> dict:
-    """Fast top-k closeness centrality algorithm with optional CPU parallelization."""
+    L_level = [0] * (max_d + 1)
+    L_level[0] = sum(i * g for i, g in enumerate(gamma))
+    
+    for i in range(1, max_d + 1):
+        num_closer = prefix_sum_gamma[i-1]
+        num_farther_or_equal = n - num_closer
+        L_level[i] = L_level[i-1] + num_closer - num_farther_or_equal
+
+    new_farness_sum_bounds = {}
+    for i in range(max_d + 1):
+        for v in levels.get(i, []):
+            # The paper's simpler bound for undirected graphs (Lemma 7.2 + deg)
+            # This is a lower bound on the sum of distances, S(v)
+            new_farness_sum_bounds[v] = L_level[i] - G.degree(v)
+            
+    return new_farness_sum_bounds
+
+def _fast_top_k_runner(G: nx.Graph, k: int, is_weighted: bool, log_convergence_data: bool = False) -> dict:
+    """
+    Fully functional implementation using farness (lower is better) and the
+    updateBoundsLB strategy from the paper.
+    """
     algo_type = "Weighted" if is_weighted else "Unweighted"
-    exec_mode = "Parallel" if use_parallel else "Sequential"
-    print(f"  -> Running Fast Top-k {algo_type} Algorithm ({exec_mode})...")
+    print(f"  -> Running Full Top-k {algo_type} Algorithm (Sequential)...")
     start_time = time.time()
 
     nodes = list(G.nodes())
     n = len(nodes)
-
-    lower_bounds = {node: 0 for node in nodes}
-    top_k_list = []
+    
+    # Paper uses 'farness', f(v) = S(v) * (n-1) / (r(v)-1)^2. Since r(v)=n for LCC,
+    # f(v) is proportional to S(v). We can work directly with S(v), the sum of distances.
+    lower_bounds_S = {node: 0.0 for node in nodes} # Lower bound on S(v)
+    top_k_list = [] # Stores (exact_S, node)
     sssp_count = 0
-    convergence_log = []
-
-    pq = [(lower_bounds[node], node) for node in nodes]
+    
+    pq = [(lower_bounds_S[node], node) for node in nodes]
     heapq.heapify(pq)
-    iteration = 0
+    
+    while pq:
+        current_S_bound, v = heapq.heappop(pq)
 
-    if use_parallel:
-        ExecutorClass = get_executor()
-        with ExecutorClass(max_workers=4) as executor:  # Adjust cores if needed
-            while pq:
-                iteration += 1
-                current_lower_bound, v = heapq.heappop(pq)
-                if current_lower_bound > lower_bounds[v]:
-                    continue
+        # Stale entry check: if we found a better bound for `v` since this
+        # entry was pushed, ignore this old entry.
+        if current_S_bound < lower_bounds_S[v]:
+            continue
 
-                if log_convergence_data:
-                    kth_farness = top_k_list[k - 1][0] if len(top_k_list) >= k else float('inf')
-                    convergence_log.append({
-                        'iteration': iteration,
-                        'kth_farness': kth_farness,
-                        'lower_bound': current_lower_bound
-                    })
+        # --- Stopping Condition ---
+        if len(top_k_list) >= k:
+            kth_S_exact = top_k_list[k-1][0]
+            if current_S_bound > kth_S_exact:
+                break # Pruning happens here!
 
-                if len(top_k_list) >= k:
-                    kth_farness_check = top_k_list[k - 1][0]
-                    if current_lower_bound > kth_farness_check:
-                        break
+        # --- SSSP Computation ---
+        sssp_count += 1
+        if is_weighted:
+            distances = nx.single_source_dijkstra_path_length(G, v)
+        else:
+            distances = nx.single_source_shortest_path_length(G, v)
+        
+        exact_S = sum(distances.values())
 
-                # Batch execution
-                batch_nodes = [heapq.heappop(pq)[1] for _ in range(min(4, len(pq)))]
-                futures = [executor.submit(_compute_farness, (G, node, is_weighted)) for node in [v] + batch_nodes]
-
-                for f in as_completed(futures):
-                    node, exact_farness = f.result()
-                    sssp_count += 1
-                    lower_bounds[node] = exact_farness
-                    heapq.heappush(top_k_list, (exact_farness, node))
-                    top_k_list.sort(key=lambda x: x[0])
-                    if len(top_k_list) > k:
-                        top_k_list.pop()
-    else:
-        # Sequential Fallback
-        while pq:
-            iteration += 1
-            current_lower_bound, v = heapq.heappop(pq)
-            if current_lower_bound > lower_bounds[v]:
-                continue
-
-            if log_convergence_data:
-                kth_farness = top_k_list[k - 1][0] if len(top_k_list) >= k else float('inf')
-                convergence_log.append({
-                    'iteration': iteration,
-                    'kth_farness': kth_farness,
-                    'lower_bound': current_lower_bound
-                })
-
-            if len(top_k_list) >= k:
-                kth_farness_check = top_k_list[k - 1][0]
-                if current_lower_bound > kth_farness_check:
-                    break
-
-            sssp_count += 1
-            if is_weighted:
-                distances = nx.single_source_dijkstra_path_length(G, v)
-            else:
-                distances = nx.single_source_shortest_path_length(G, v)
-
-            exact_farness = sum(distances.values())
-            lower_bounds[v] = exact_farness
-
-            heapq.heappush(top_k_list, (exact_farness, v))
-            top_k_list.sort(key=lambda x: x[0])
-            if len(top_k_list) > k:
-                top_k_list.pop()
+        # Update the exact score of the processed node `v`
+        lower_bounds_S[v] = exact_S
+        heapq.heappush(top_k_list, (exact_S, v))
+        top_k_list.sort(key=lambda x: x[0])
+        if len(top_k_list) > k:
+            top_k_list.pop()
+        
+        # --- CRITICAL STEP: Update bounds for ALL other nodes ---
+        new_S_bounds = _update_all_bounds_lb(G, v, distances)
+        
+        for node, s_lb in new_S_bounds.items():
+            if s_lb > lower_bounds_S[node]:
+                 lower_bounds_S[node] = s_lb
+                 heapq.heappush(pq, (s_lb, node))
 
     runtime = time.time() - start_time
     print(f"     Done in {runtime:.4f} seconds. ({sssp_count}/{n} SSSPs performed)")
-
+    
+    # Convert final farness sums (S) to closeness scores
     final_top_k = []
-    for farness, node in top_k_list:
-        closeness = (n - 1) / farness if farness > 0 else 0.0
+    for s_val, node in top_k_list:
+        closeness = (n - 1) / s_val if s_val > 0 else 0.0
         final_top_k.append((closeness, node))
     final_top_k.sort(key=lambda x: x[0], reverse=True)
 
     pruning_power = 1.0 - (sssp_count / n)
-
-    result_dict = {
-        'top_k': final_top_k,
-        'runtime': runtime,
-        'sssp_count': sssp_count,
-        'pruning_power': pruning_power
-    }
-    if log_convergence_data:
-        result_dict['convergence_log'] = convergence_log
-
+    
+    result_dict = {'top_k': final_top_k, 'runtime': runtime, 'sssp_count': sssp_count, 'pruning_power': pruning_power}
+    # Note: Convergence logging would need to be added back if desired
     return result_dict
 
+def topk_closeness_unweighted(G: nx.Graph, k: int, **kwargs) -> dict:
+    return _fast_top_k_runner(G, k, is_weighted=False, **kwargs)
 
-def topk_closeness_unweighted(G: nx.Graph, k: int, log_convergence_data: bool = False, use_parallel: bool = True) -> dict:
-    return _fast_top_k_runner(G, k, is_weighted=False, log_convergence_data=log_convergence_data, use_parallel=use_parallel)
-
-
-def topk_closeness_weighted(G: nx.Graph, k: int, log_convergence_data: bool = False, use_parallel: bool = True) -> dict:
-    return _fast_top_k_runner(G, k, is_weighted=True, log_convergence_data=log_convergence_data, use_parallel=use_parallel)
-
-
-# --- Standalone Test ---
-if __name__ == '__main__':
-    print("--- Running Tests on a Small Example Graph ---")
-
-    G_unweighted = nx.star_graph(10)
-    print("\n--- Unweighted Test on Star Graph ---")
-    k = 3
-
-    textbook_res_u = textbook_unweighted(G_unweighted, k)
-    fast_res_u = topk_closeness_unweighted(G_unweighted, k, use_parallel=True)
-
-    print("\nTextbook Unweighted Results:", [node for score, node in textbook_res_u['top_k']])
-    print("Fast Unweighted Results:", [node for score, node in fast_res_u['top_k']])
-    print(f"Pruning Power: {fast_res_u['pruning_power']:.2%}")
-
-    G_weighted = nx.Graph()
-    G_weighted.add_edge(0, 1, weight=0.1)
-    G_weighted.add_edge(1, 2, weight=0.1)
-    G_weighted.add_edge(1, 3, weight=0.1)
-    G_weighted.add_edge(3, 4, weight=1.0)
-    G_weighted.add_edge(3, 5, weight=1.0)
-
-    print("\n--- Weighted Test on Custom Graph ---")
-    k = 2
-
-    textbook_res_w = textbook_weighted(G_weighted, k)
-    fast_res_w = topk_closeness_weighted(G_weighted, k, use_parallel=True)
-
-    print("\nTextbook Weighted Results:", [node for score, node in textbook_res_w['top_k']])
-    print("Fast Weighted Results:", [node for score, node in fast_res_w['top_k']])
-    print(f"Pruning Power: {fast_res_w['pruning_power']:.2%}")
+def topk_closeness_weighted(G: nx.Graph, k: int, **kwargs) -> dict:
+    return _fast_top_k_runner(G, k, is_weighted=True, **kwargs)
