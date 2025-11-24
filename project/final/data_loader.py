@@ -1,175 +1,96 @@
 import networkx as nx
-import os
 from pathlib import Path
-from collections import defaultdict
 
-# Define the path to the networks folder relative to the script's location
 DATA_DIR = Path(__file__).parent / "networks"
 
-# Configuration dictionary to map dataset names to their file info and properties
-# This makes it easy to add new datasets in the future.
+# --- DEFINITIVE FINAL 7-DATASET CONFIGURATION ---
 DATASET_CONFIG = {
-    'livejournal': {
-        'filename': 'Wiki-vote.txt',
+    'wiki-vote': {
+        'filename': 'wiki-Vote.txt.gz',
         'pretty_name': 'Wiki-Vote',
         'is_weighted': False,
         'comment_char': '#'
     },
-    'orkut': {
-        'filename': 'facebook_combined.txt',
+    'facebook': {
+        'filename': 'facebook_combined.txt.gz',
         'pretty_name': 'Facebook',
         'is_weighted': False,
         'comment_char': '#'
     },
-    'google': {
-        'filename': 'email-Eu-core-department-labels.txt',
+    'email-eu': {
+        'filename': 'email-Eu-core.txt.gz',
         'pretty_name': 'Email-EU-Core',
         'is_weighted': False,
         'comment_char': '#'
     },
-    'dblp': {
-        'filename': 'CA-GrQc.txt',
+    'ca-grqc': {
+        'filename': 'CA-GrQc.txt.gz',
         'pretty_name': 'CA-GrQc',
         'is_weighted': False,
         'comment_char': '#'
+    },
+    'lesmis': {
+        'filename': 'lesmis.gml',
+        'pretty_name': 'Les Misérables',
+        'is_weighted': True,
+        'loader_func': 'gml'
+    },
+    'norwegian-boards': {
+        'filename': 'norwegian-boards.txt',
+        'pretty_name': 'Norwegian Boards',
+        'is_weighted': True,
+        'loader_func': 'edgelist'
+    },
+    'facebook-forum': {
+        'filename': 'facebook-forum.txt',
+        'pretty_name': 'Facebook Forum',
+        'is_weighted': True,
+        'loader_func': 'edgelist'
     }
 }
-
-def _load_stackoverflow() -> nx.Graph:
-    """
-    Custom loader for the Stack Overflow dataset.
-    
-    The dataset is a temporal edge list (u, v, timestamp). We create a static,
-    weighted graph where the edge weight is the inverse of the number of
-    interactions between two users. A stronger connection (more interactions)
-    results in a smaller weight (shorter path distance).
-    
-    Returns:
-        nx.Graph: The loaded and aggregated weighted graph.
-    """
-    config = DATASET_CONFIG['stackoverflow']
-    filepath = DATA_DIR / config['filename']
-    print(f"  -> Applying custom loader for Stack Overflow...")
-
-    # Use a defaultdict to count interactions for each edge pair
-    edge_counts = defaultdict(int)
-    
-    print(f"  -> Reading and aggregating edges from {filepath}...")
-    with open(filepath, 'r') as f:
-        for line in f:
-            if line.startswith(config['comment_char']):
-                continue
-            parts = line.strip().split()
-            # The file format can be different, often space or comma separated
-            u, v = int(parts[0]), int(parts[1])
-            # Ensure canonical edge representation (u, v) where u < v
-            edge = tuple(sorted((u, v)))
-            edge_counts[edge] += 1
-            
-    G = nx.Graph()
-    print("  -> Creating weighted graph from aggregated interactions...")
-    
-    weighted_edges = [
-        (u, v, 1.0 / count) for (u, v), count in edge_counts.items()
-    ]
-    
-    G.add_weighted_edges_from(weighted_edges)
-    return G
-
 
 def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
     """
     Loads a graph by its short name, performs standardized pre-processing,
     and returns the final graph object.
-
-    Pre-processing steps:
-    1. Loads the graph from the corresponding file in the './networks' folder.
-    2. Converts the graph to be undirected.
-    3. Extracts the Largest Connected Component (LCC).
-
-    Args:
-        dataset_name (str): The short name of the dataset (e.g., 'livejournal').
-
-    Returns:
-        nx.Graph: The pre-processed graph ready for experiments.
     """
-    dataset_name = dataset_name.lower()
     if dataset_name not in DATASET_CONFIG:
-        raise ValueError(f"Unknown dataset: '{dataset_name}'. "
-                         f"Available datasets are: {list(DATASET_CONFIG.keys())}")
-
+        raise ValueError(f"Unknown dataset: '{dataset_name}'.")
     config = DATASET_CONFIG[dataset_name]
     filepath = DATA_DIR / config['filename']
-    
-    print(f"\n--- Loading and Pre-processing Dataset: {config['pretty_name'].upper()} ---")
-
+    pretty_name = config['pretty_name']
+    print(f"\n--- Loading and Pre-processing Dataset: {pretty_name.upper()} ---")
     if not filepath.exists():
-        raise FileNotFoundError(
-            f"Dataset file not found at: {filepath}\n"
-            f"Please download '{config['filename']}' and place it in the '{DATA_DIR}' folder."
-        )
-
-    # --- Step 1: Load Graph ---
-    G = None
-    if 'loader_func' in config and config['loader_func'] == '_load_stackoverflow':
-        G = _load_stackoverflow()
+        raise FileNotFoundError(f"Dataset file not found at: {filepath}")
+    loader = config.get('loader_func')
+    if loader == 'gml':
+        print(f"  -> Reading GML graph from {filepath}...")
+        G = nx.read_gml(filepath, label='id')
     else:
-        print(f"  -> Reading graph from {filepath}...")
+        print(f"  -> Reading edgelist from {filepath}...")
         if config['is_weighted']:
-            # For weighted graphs like roadNet-CA
-            G = nx.read_weighted_edgelist(
-                filepath, 
-                comments=config['comment_char'], 
-                nodetype=int
-            )
+            G = nx.read_weighted_edgelist(filepath, comments=config.get('comment_char', '#'), nodetype=int)
         else:
-            # For unweighted graphs
-            G = nx.read_edgelist(
-                filepath, 
-                comments=config['comment_char'], 
-                nodetype=int
-            )
-    
+            G = nx.read_edgelist(filepath, comments=config.get('comment_char', '#'), nodetype=int)
     print(f"  -> Initial graph loaded: {G.number_of_nodes():,} nodes, {G.number_of_edges():,} edges.")
-
-    # --- Step 2: Ensure Undirected ---
+    if config['is_weighted']:
+        print("  -> Inverting edge weights for shortest path calculation (distance = 1/weight)...")
+        for u, v, d in G.edges(data=True):
+            raw_weight = d.get('weight', d.get('value', 1.0))
+            if raw_weight > 0:
+                d['weight'] = 1.0 / raw_weight
+            else:
+                d['weight'] = float('inf')
     if nx.is_directed(G):
         print("  -> Converting directed graph to undirected.")
         G = G.to_undirected()
-
-    # --- Step 3: Extract Largest Connected Component (LCC) ---
     if nx.is_connected(G):
         print("  -> Graph is already connected. Using the full graph.")
         G_lcc = G
     else:
-        print("  -> Graph is not connected. Extracting the Largest Connected Component (LCC)...")
-        # Get the largest component
+        print("  -> Graph is not connected. Extracting the LCC...")
         lcc_nodes = max(nx.connected_components(G), key=len)
         G_lcc = G.subgraph(lcc_nodes).copy()
-        
-        print(f"  -> LCC extracted. Graph size reduced:")
-        print(f"     Nodes: {G.number_of_nodes():,} -> {G_lcc.number_of_nodes():,}")
-        print(f"     Edges: {G.number_of_edges():,} -> {G_lcc.number_of_edges():,}")
-
-    print(f"--- Finished processing {config['pretty_name'].upper()}. Ready for analysis. ---")
+        print(f"  -> LCC extracted: {G_lcc.number_of_nodes():,} nodes, {G_lcc.number_of_edges():,} edges.")
+    print(f"--- Finished processing {pretty_name.upper()}. Ready for analysis. ---")
     return G_lcc
-
-
-# This block allows you to run the script directly for testing purposes
-if __name__ == '__main__':
-    # List of datasets to test loading
-    datasets_to_test = [
-        'livejournal',
-        'roadnet-ca',
-        'stackoverflow',
-        'dblp'
-    ]
-
-    for name in datasets_to_test:
-        try:
-            graph = load_and_preprocess_graph(name)
-            print(f"Successfully loaded and processed '{name}'.")
-            # You can add more checks here, like printing the number of nodes/edges
-            print(f"Final graph info: Nodes={graph.number_of_nodes()}, Edges={graph.number_of_edges()}\n")
-        except (ValueError, FileNotFoundError) as e:
-            print(f"Error loading '{name}': {e}\n")
