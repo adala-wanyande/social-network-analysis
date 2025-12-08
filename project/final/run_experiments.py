@@ -11,7 +11,10 @@ DATASETS_CONFIG = {
     'ca-grqc':          {'is_weighted': False, 'run_textbook': True},
     'lesmis':           {'is_weighted': True,  'run_textbook': True},
     'norwegian-boards': {'is_weighted': True,  'run_textbook': True},
-    'facebook-forum':   {'is_weighted': True,  'run_textbook': True}
+    'facebook-forum':   {'is_weighted': True,  'run_textbook': True},
+    'RoadNet-CA': {'is_weighted': False, 'run_textbook': True},
+    'Cit-HepTh': {'is_weighted': False, 'run_textbook': True}
+
 }
 
 K_VALUES = [1, 10, 100]
@@ -46,9 +49,9 @@ def main():
         for k in K_VALUES:
             print(f"\n--- Running k = {k} ---")
 
-            # ------------------------
-            # 1. Textbook (Sequential BFS/Dijkstra)
-            # ------------------------
+            #------------------------
+            #1. Textbook (Sequential BFS/Dijkstra)
+            #------------------------
             if config['run_textbook']:
                 algo_func = (
                     centrality_algorithms.textbook_weighted
@@ -69,9 +72,9 @@ def main():
                     'parallel_used': False
                 })
 
-            # ------------------------
-            # 2. Fast Top-K SEQUENTIAL
-            # ------------------------
+            #------------------------
+            #2. Fast Top-K SEQUENTIAL
+            #------------------------
             log_this_run = (name, k) in CONVERGENCE_LOG_CONFIG
             fast_func = (
                 centrality_algorithms.topk_closeness_weighted
