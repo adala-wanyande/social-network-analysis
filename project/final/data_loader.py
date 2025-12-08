@@ -46,7 +46,19 @@ DATASET_CONFIG = {
         'pretty_name': 'Facebook Forum',
         'is_weighted': True,
         'loader_func': 'edgelist'
-    }
+    },
+   'RoadNet-CA': {
+        'filename': 'roadNet-CA.txt.gz',
+        'pretty_name': 'RoadNet-CA',
+        'is_weighted': False,
+        'loader_func': 'edgelist'
+    }, 
+    'Cit-HepTh': {
+        'filename': 'Cit-HepTh.txt',
+        'pretty_name': 'Cit-HepTh',
+        'is_weighted': False,
+        'loader_func': 'edgelist'
+    }, 
 }
 
 def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
