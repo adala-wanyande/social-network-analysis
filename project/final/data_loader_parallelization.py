@@ -106,3 +106,4 @@ def load_and_preprocess_graph(dataset_name: str) -> nx.Graph:
         print(f"  -> LCC extracted: {G_lcc.number_of_nodes():,} nodes, {G_lcc.number_of_edges():,} edges.")
     print(f"--- Finished processing {pretty_name.upper()}. Ready for analysis. ---")
     return G_lcc
+
