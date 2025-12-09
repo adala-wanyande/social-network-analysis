@@ -1,4 +1,4 @@
-# centrality_algorithms.py
+# centrality_algorithms_parallelization.py
 import networkx as nx
 import time
 import heapq
@@ -312,3 +312,4 @@ if __name__ == '__main__':
     print(topk_closeness_unweighted(G, 3, use_parallel=False))
     print("Unweighted top-k (parallel):")
     print(topk_closeness_unweighted(G, 3, use_parallel=True, max_workers=4))
+
