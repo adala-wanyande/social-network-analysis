@@ -1,7 +1,7 @@
 sn_env/
 *.tsv
 *.csv
-*.txt
+# *.txt
 __pycache__/
 .DS_Store
-*.gml
+# *.gml

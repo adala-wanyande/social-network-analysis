@@ -4,7 +4,7 @@ import heapq
 import pandas as pd
 
 # --- Textbook functions remain the same ---
-def textbook_unweighted(G: nx.Graph, k: int) -> dict:
+def textbook_unweighted(G: nx.Graph, k: int, **kwargs) -> dict:
     """Computes top-k closeness using the textbook BFS-from-every-node method."""
     print("  -> Running Textbook Unweighted Algorithm...")
     start_time = time.time()
@@ -21,7 +21,7 @@ def textbook_unweighted(G: nx.Graph, k: int) -> dict:
     print(f"     Done in {runtime:.4f} seconds.")
     return {'top_k': centrality_scores[:k], 'runtime': runtime}
 
-def textbook_weighted(G: nx.Graph, k: int) -> dict:
+def textbook_weighted(G: nx.Graph, k: int, **kwargs) -> dict:
     """Computes top-k closeness using the textbook Dijkstra-from-every-node method."""
     print("  -> Running Textbook Weighted Algorithm...")
     start_time = time.time()
