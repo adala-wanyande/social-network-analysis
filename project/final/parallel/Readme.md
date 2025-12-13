@@ -10,7 +10,6 @@ The repository is organized into the following components:
 -   `centrality_algorithms.py`: The core module containing implementations of the textbook and fast top-k algorithms.
 -   `run_experiments.py`: The main executable script to run the full experimental pipeline.
 -   ` networks/`: A directory containing all the network dataset files.
--   
 ## Setup and Installation
 
 To run this project, you will need Python 3.8+ and the packages listed in `requirements.txt`. It is highly recommended to use a virtual environment.
