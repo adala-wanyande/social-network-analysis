@@ -6,8 +6,8 @@ This repository implements the fast top-k closeness centrality algorithm by Berg
 
 The repository is organized into the following components:
 
--   `requirements.txt`: A list of all required Python packages.
--   `data_loader.py`: A module for loading and pre-processing all network datasets.
+-   
+-    data_loader.py`: A module for loading and pre-processing all network datasets.
 -   `centrality_algorithms.py`: The core module containing implementations of the textbook and fast top-k algorithms.
 -   `run_experiments.py`: The main executable script to run the full experimental pipeline.
 -   
