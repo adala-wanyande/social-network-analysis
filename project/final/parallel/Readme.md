@@ -61,6 +61,5 @@ python run_experiments.py
 
 This will produce the below output file in the root directory:
 -   `experiment_results_[timestamp].csv`: A CSV file containing the complete results (runtimes, pruning power, etc.) for all runs.
--   
 
 
