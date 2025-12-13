@@ -63,8 +63,8 @@ Run the main experiment script. This will execute both the textbook and fast alg
 python run_experiments.py
 ```
 
-This will produce two types of output files in the root directory:
+This will produce the below output file in the root directory:
 -   `experiment_results_[timestamp].csv`: A CSV file containing the complete results (runtimes, pruning power, etc.) for all runs.
--   `convergence_log_[dataset]_[k].csv`: CSV files containing detailed data for the bounds convergence plots for specified datasets.
+-   
 
 
